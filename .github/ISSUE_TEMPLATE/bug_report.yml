@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible WordingKit problem.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API keys, private selected text, customer data, or internal URLs.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps needed to reproduce the issue.
+      placeholder: |
+        1. Select text in ...
+        2. Run Rewrite This
+        3. Choose ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - Ollama
+        - OpenAI
+        - Anthropic
+        - Groq
+        - Multiple providers
+        - Not provider-related
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Environment
+      description: macOS, Raycast, Node.js, and WordingKit version or commit.
+      placeholder: "macOS 15.x, Raycast x.y.z, Node 22.x, commit ..."
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Add screenshots or logs only after removing secrets and private text.

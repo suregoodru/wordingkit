@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest a focused improvement for WordingKit.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is hard or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should WordingKit do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workaround or simpler option have you tried?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Rewrite flow
+        - Custom modes
+        - Provider integration
+        - Ollama/local models
+        - Settings
+        - Documentation
+        - Other
+    validations:
+      required: true
