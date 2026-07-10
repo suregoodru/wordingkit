@@ -15,6 +15,7 @@ import {
 } from "./modes";
 import { getUiStrings } from "./i18n";
 import type { Language } from "./language";
+import { PROVIDER_REGISTRY } from "./provider-registry";
 
 type FormValues = {
   title: string;
@@ -31,13 +32,6 @@ type ModeFormProps = {
   language: Language;
   onSaved: () => Promise<unknown> | unknown;
 };
-
-const providerOptions: Array<{ value: Provider; title: string }> = [
-  { value: "openai", title: "OpenAI" },
-  { value: "anthropic", title: "Anthropic" },
-  { value: "groq", title: "Groq" },
-  { value: "ollama", title: "Ollama" },
-];
 
 export default function ModeForm({ mode, language, onSaved }: ModeFormProps) {
   const { pop } = useNavigation();
@@ -103,8 +97,8 @@ export default function ModeForm({ mode, language, onSaved }: ModeFormProps) {
         title={ui.provider}
         defaultValue={mode?.provider ?? "ollama"}
       >
-        {providerOptions.map(({ value, title }) => (
-          <Form.Dropdown.Item key={value} value={value} title={title} />
+        {PROVIDER_REGISTRY.map(({ id, title }) => (
+          <Form.Dropdown.Item key={id} value={id} title={title} />
         ))}
       </Form.Dropdown>
       <Form.TextField

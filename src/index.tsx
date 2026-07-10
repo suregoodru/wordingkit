@@ -21,13 +21,14 @@ import {
 import { getRewriteViewState } from "./rewrite-state";
 import { DEFAULT_LANGUAGE, type Language } from "./language";
 import { getUiStrings } from "./i18n";
+import {
+  getProviderDefinition,
+  type ProviderCredentialKey,
+} from "./provider-registry";
 
 const MAX_TEXT_LENGTH = 20_000;
 const REQUEST_TIMEOUT_MS = 60_000;
-type Preferences = {
-  openaiApiKey?: string;
-  anthropicApiKey?: string;
-  groqApiKey?: string;
+type Preferences = Partial<Record<ProviderCredentialKey, string>> & {
   ollamaUrl?: string;
 };
 
@@ -97,14 +98,12 @@ export default function Command() {
     setError(undefined);
     try {
       const preferences = getPreferenceValues<Preferences>();
-      const apiKeys = {
-        openai: preferences.openaiApiKey,
-        anthropic: preferences.anthropicApiKey,
-        groq: preferences.groqApiKey,
-        ollama: undefined,
-      };
-      const apiKey = apiKeys[mode.provider];
-      if (mode.provider !== "ollama" && !apiKey)
+      const provider = getProviderDefinition(mode.provider);
+      if (!provider) throw new Error(`Unknown provider: ${mode.provider}`);
+      const apiKey = provider.credentialKey
+        ? preferences[provider.credentialKey]
+        : undefined;
+      if (provider.location === "cloud" && !apiKey)
         throw new Error(ui.configureApiKey);
       const options: RewriteOptions = {
         text,

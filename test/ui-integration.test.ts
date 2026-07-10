@@ -32,13 +32,14 @@ test("rewrite command loads, sorts, and sends the selected full mode", async () 
   assert.doesNotMatch(index, /RUSSIAN_STYLES|tone:/);
 });
 
-test("rewrite command selects the matching cloud API key and leaves Ollama keyless", async () => {
+test("rewrite command resolves provider credentials through the registry", async () => {
   const index = await source("../src/index.tsx");
 
-  assert.match(index, /openai:\s*preferences\.openaiApiKey/);
-  assert.match(index, /anthropic:\s*preferences\.anthropicApiKey/);
-  assert.match(index, /groq:\s*preferences\.groqApiKey/);
-  assert.match(index, /ollama:\s*undefined/);
+  assert.match(index, /getProviderDefinition/);
+  assert.match(index, /provider\.credentialKey/);
+  assert.match(index, /preferences\[provider\.credentialKey\]/);
+  assert.match(index, /provider\.location === "cloud"/);
+  assert.doesNotMatch(index, /const\s+apiKeys\s*=/);
 });
 
 test("settings exposes manual ordering controls alongside mode management", async () => {
@@ -97,4 +98,6 @@ test("mode form validates user input and delegates mode persistence", async () =
   assert.match(form, /validateEditingMode/);
   assert.match(form, /createMode/);
   assert.match(form, /updateMode/);
+  assert.match(form, /PROVIDER_REGISTRY\.map/);
+  assert.doesNotMatch(form, /const\s+providerOptions/);
 });
