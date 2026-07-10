@@ -57,11 +57,48 @@ const {
   MODE_STORAGE_VERSION,
   moveMode,
   resetModes,
+  setLanguage,
   setSortMode,
   sortModes,
   updateMode,
   validateEditingMode,
 } = await import("../src/modes.ts");
+
+test("language presets provide English and Russian defaults with stable mode ids", async () => {
+  const { LANGUAGE_PRESETS } = await import("../src/tones.ts");
+
+  assert.deepEqual(
+    LANGUAGE_PRESETS.en.styles.map(({ id }) => id),
+    LANGUAGE_PRESETS.ru.styles.map(({ id }) => id),
+  );
+  assert.equal(LANGUAGE_PRESETS.en.defaultProvider, "ollama");
+  assert.equal(LANGUAGE_PRESETS.en.defaultModel, "qwen3:14b");
+  assert.match(LANGUAGE_PRESETS.en.prompts["fix-errors"], /Return only/);
+  assert.match(LANGUAGE_PRESETS.ru.prompts["fix-errors"], /Верни только/);
+});
+
+test("new mode storage uses English language defaults", async () => {
+  resetStorage();
+
+  const settings = await loadModeSettings();
+
+  assert.equal(settings.language, "en");
+  assert.equal(settings.modes[0]?.title, "Fix Errors");
+});
+
+test("changing language preserves modes until an explicit reset", async () => {
+  resetStorage(storedDocument([validMode]));
+
+  const changed = await setLanguage("ru");
+  assert.deepEqual(changed.modes, [validMode]);
+  assert.equal(changed.language, "ru");
+
+  const reset = await resetModes();
+  assert.equal(reset[0]?.title, "Исправить ошибки");
+  const persisted = JSON.parse(storage.get(MODE_STORAGE_KEY) as string);
+  assert.equal(persisted.language, "ru");
+  assert.equal(persisted.sortMode, "custom");
+});
 
 const validMode = {
   id: "mode-id",
@@ -73,8 +110,8 @@ const validMode = {
   maxTokens: 4096,
 } as const;
 
-function storedDocument(modes: unknown, sortMode = "custom"): string {
-  return JSON.stringify({ version: MODE_STORAGE_VERSION, sortMode, modes });
+function storedDocument(modes: unknown, sortMode = "custom", language = "en"): string {
+  return JSON.stringify({ version: MODE_STORAGE_VERSION, language, sortMode, modes });
 }
 
 function legacyStoredDocument(modes: unknown): string {
@@ -91,10 +128,10 @@ function resetStorage(value?: unknown): void {
 }
 
 test("default editing modes provide the universal rewrite preset", () => {
-  const modes = createDefaultModes();
+  const modes = createDefaultModes("ru");
 
   assert.equal(MODE_STORAGE_KEY, "editing-modes");
-  assert.equal(MODE_STORAGE_VERSION, 2);
+  assert.equal(MODE_STORAGE_VERSION, 3);
   assert.deepEqual(
     modes.map(
       ({
@@ -293,43 +330,43 @@ test("validateEditingMode trims editable text fields", () => {
 test("validateEditingMode rejects invalid editable fields", () => {
   assert.throws(
     () => validateEditingMode({ ...validMode, title: "  " }),
-    /название/i,
+    /invalid mode title/i,
   );
   assert.throws(
     () => validateEditingMode({ ...validMode, id: "  " }),
-    /идентификатор/i,
+    /invalid mode identifier/i,
   );
   assert.throws(
     () => validateEditingMode({ ...validMode, model: "  " }),
-    /модель/i,
+    /invalid mode model/i,
   );
   assert.throws(
     () => validateEditingMode({ ...validMode, systemPrompt: "  " }),
-    /инструкц/i,
+    /invalid mode system prompt/i,
   );
   assert.throws(
     () => validateEditingMode({ ...validMode, provider: "custom" as "ollama" }),
-    /провайдер/i,
+    /invalid mode provider/i,
   );
   assert.throws(
     () => validateEditingMode({ ...validMode, temperature: Number.NaN }),
-    /температур/i,
+    /invalid mode temperature/i,
   );
   assert.throws(
     () => validateEditingMode({ ...validMode, temperature: -0.1 }),
-    /температур/i,
+    /invalid mode temperature/i,
   );
   assert.throws(
     () => validateEditingMode({ ...validMode, temperature: 2.1 }),
-    /температур/i,
+    /invalid mode temperature/i,
   );
   assert.throws(
     () => validateEditingMode({ ...validMode, maxTokens: 0 }),
-    /токен/i,
+    /invalid mode maximum tokens/i,
   );
   assert.throws(
     () => validateEditingMode({ ...validMode, maxTokens: 1.5 }),
-    /токен/i,
+    /invalid mode maximum tokens/i,
   );
 });
 
@@ -342,6 +379,7 @@ test("loadModes initializes defaults only when storage is absent", async () => {
   assert.equal(writes[0]?.key, MODE_STORAGE_KEY);
   assert.deepEqual(JSON.parse(writes[0]?.value as string), {
     version: MODE_STORAGE_VERSION,
+    language: "en",
     sortMode: "custom",
     modes: initialized,
   });
@@ -359,6 +397,7 @@ test("loadModes initializes defaults when LocalStorage returns null", async () =
   assert.equal(writes.length, 1);
   assert.deepEqual(JSON.parse(writes[0]?.value as string), {
     version: MODE_STORAGE_VERSION,
+    language: "en",
     sortMode: "custom",
     modes: initialized,
   });
@@ -368,24 +407,29 @@ test("loadModeSettings migrates version 1 modes to custom sorting", async () => 
   resetStorage(legacyStoredDocument([validMode]));
 
   assert.deepEqual(await loadModeSettings(), {
+    language: "en",
     sortMode: "custom",
     modes: [validMode],
   });
   assert.deepEqual(JSON.parse(writes[0]?.value as string), {
-    version: 2,
+    version: 3,
+    language: "en",
     sortMode: "custom",
     modes: [validMode],
   });
 });
 
-test("loadModeSettings returns version 2 modes and sorting preference", async () => {
-  resetStorage(storedDocument([validMode], "last-used"));
+test("loadModeSettings migrates version 2 modes and sorting preference", async () => {
+  resetStorage(JSON.stringify({ version: 2, sortMode: "last-used", modes: [validMode] }));
 
   assert.deepEqual(await loadModeSettings(), {
+    language: "en",
     sortMode: "last-used",
     modes: [validMode],
   });
-  assert.equal(writes.length, 0);
+  assert.deepEqual(JSON.parse(writes[0]?.value as string), {
+    version: 3, language: "en", sortMode: "last-used", modes: [validMode],
+  });
 });
 
 test("loadModes preserves malformed stored values without overwriting them", async () => {
@@ -394,7 +438,7 @@ test("loadModes preserves malformed stored values without overwriting them", asy
 
   await assert.rejects(
     loadModes(),
-    /Сохранённые режимы повреждены\. Измените их в настройках\./,
+    /Saved modes are corrupted/i,
   );
 
   assert.equal(storage.get(MODE_STORAGE_KEY), damaged);
@@ -407,7 +451,7 @@ test("loadModes rejects invalid persisted documents without overwriting them", a
 
   await assert.rejects(
     loadModes(),
-    /Сохранённые режимы повреждены\. Измените их в настройках\./,
+    /Saved modes are corrupted/i,
   );
 
   assert.equal(storage.get(MODE_STORAGE_KEY), damaged);
@@ -422,6 +466,7 @@ test("resetModes intentionally replaces corrupted storage with default modes", a
   assert.equal(writes.length, 1);
   assert.deepEqual(JSON.parse(writes[0]?.value as string), {
     version: MODE_STORAGE_VERSION,
+    language: "en",
     sortMode: "custom",
     modes: reset,
   });
@@ -533,7 +578,7 @@ test("updateMode validates and replaces a known mode without changing list order
   resetStorage(storedDocument([validMode]));
   await assert.rejects(
     updateMode({ ...validMode, id: "missing" }),
-    /не найден/i,
+    /Mode not found/i,
   );
   assert.equal(writes.length, 0);
 });
@@ -545,6 +590,7 @@ test("deleteMode rewrites a validated list and permits an empty list", async () 
 
   assert.deepEqual(JSON.parse(writes[0]?.value as string), {
     version: MODE_STORAGE_VERSION,
+    language: "en",
     sortMode: "custom",
     modes: [],
   });
@@ -554,16 +600,18 @@ test("setSortMode validates and persists the requested display order", async () 
   resetStorage(storedDocument([validMode]));
 
   assert.deepEqual(await setSortMode("last-used"), {
+    language: "en",
     sortMode: "last-used",
     modes: [validMode],
   });
   assert.deepEqual(JSON.parse(writes[0]?.value as string), {
-    version: 2,
+    version: MODE_STORAGE_VERSION,
+    language: "en",
     sortMode: "last-used",
     modes: [validMode],
   });
 
-  await assert.rejects(setSortMode("alphabetical" as "custom"), /сортировк/i);
+  await assert.rejects(setSortMode("alphabetical" as "custom"), /supported sort/i);
 });
 
 test("moveMode swaps a mode with its adjacent manual position", async () => {
@@ -610,12 +658,12 @@ test("markModeUsed records a valid ISO timestamp for a known mode", async () => 
     { ...validMode, lastUsedAt: timestamp },
   ]);
 
-  await assert.rejects(markModeUsed("missing", timestamp), /не найден/i);
-  await assert.rejects(markModeUsed(validMode.id, "not-a-date"), /дат/i);
-  await assert.rejects(markModeUsed(validMode.id, "2026-06-24"), /дат/i);
+  await assert.rejects(markModeUsed("missing", timestamp), /Mode not found/i);
+  await assert.rejects(markModeUsed(validMode.id, "not-a-date"), /last used date/i);
+  await assert.rejects(markModeUsed(validMode.id, "2026-06-24"), /last used date/i);
   await assert.rejects(
     markModeUsed(validMode.id, "2026-06-24T12:00:00Z"),
-    /дат/i,
+    /last used date/i,
   );
 });
 
@@ -637,13 +685,13 @@ test("sortModes sorts recent usage stably while retaining manual ties", () => {
 
 test("mutations reject invalid input and corrupted stored modes before writing", async () => {
   resetStorage(storedDocument([validMode]));
-  await assert.rejects(createMode({ ...validMode, title: " " }), /название/i);
+  await assert.rejects(createMode({ ...validMode, title: " " }), /invalid mode title/i);
   assert.equal(writes.length, 0);
 
   resetStorage(storedDocument([{ ...validMode, maxTokens: 0 }]));
   await assert.rejects(
     deleteMode(validMode.id),
-    /Сохранённые режимы повреждены\. Измените их в настройках\./,
+    /Saved modes are corrupted/i,
   );
   assert.equal(writes.length, 0);
 });
@@ -651,7 +699,7 @@ test("mutations reject invalid input and corrupted stored modes before writing",
 test("a failed mutation does not block a later mutation", async () => {
   resetStorage(storedDocument([]));
 
-  await assert.rejects(createMode({ ...validMode, title: " " }), /название/i);
+  await assert.rejects(createMode({ ...validMode, title: " " }), /invalid mode title/i);
   const created = await createMode({
     title: "Рабочий режим",
     provider: "ollama",
@@ -668,8 +716,8 @@ test("a failed mutation does not block a later mutation", async () => {
 });
 
 test("validateEditingMode reports readable errors for malformed persisted values", () => {
-  assert.throws(() => validateEditingMode(null), /данные режима/i);
-  assert.throws(() => validateEditingMode({ id: "mode-id" }), /название/i);
+  assert.throws(() => validateEditingMode(null), /invalid mode data/i);
+  assert.throws(() => validateEditingMode({ id: "mode-id" }), /invalid mode title/i);
   assert.throws(
     () =>
       validateEditingMode({
@@ -681,7 +729,7 @@ test("validateEditingMode reports readable errors for malformed persisted values
         temperature: 0.2,
         maxTokens: 4096,
       }),
-    /название/i,
+    /invalid mode title/i,
   );
   assert.throws(
     () =>
@@ -694,7 +742,7 @@ test("validateEditingMode reports readable errors for malformed persisted values
         temperature: 0.2,
         maxTokens: 4096,
       }),
-    /модель/i,
+    /invalid mode model/i,
   );
 });
 

@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { RUSSIAN_STYLES, TONE_PROMPTS } from "../src/tones.ts";
+import { LANGUAGE_PRESETS } from "../src/tones.ts";
 import type { EditingMode } from "../src/modes.ts";
 
 type ManualMode = Omit<EditingMode, "lastUsedAt">;
@@ -71,7 +71,8 @@ export async function generateManualEvalModes(
   const models = validateManualModels(
     await readJsonFile(path.join(inputDir, "models.json")),
   );
-  const modes = buildManualEvalModes(RUSSIAN_STYLES, TONE_PROMPTS, models);
+  const preset = LANGUAGE_PRESETS.ru;
+  const modes = buildManualEvalModes(preset.styles, preset.prompts, models);
   const outputPath = path.join(inputDir, "modes.json");
 
   await writeFile(outputPath, `${JSON.stringify(modes, null, 2)}\n`, "utf8");

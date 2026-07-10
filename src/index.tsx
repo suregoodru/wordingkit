@@ -19,6 +19,8 @@ import {
   type EditingMode,
 } from "./modes";
 import { getRewriteViewState } from "./rewrite-state";
+import { DEFAULT_LANGUAGE, type Language } from "./language";
+import { getUiStrings } from "./i18n";
 
 const MAX_TEXT_LENGTH = 20_000;
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -34,6 +36,7 @@ export default function Command() {
   const [text, setText] = useState<string>();
   const [modes, setModes] = useState<EditingMode[]>([]);
   const [sortMode, setSortMode] = useState<"custom" | "last-used">("custom");
+  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
   const [error, setError] = useState<string>();
   const [isTextLoading, setIsTextLoading] = useState(true);
   const [isModesLoading, setIsModesLoading] = useState(true);
@@ -43,7 +46,8 @@ export default function Command() {
   useEffect(() => {
     selectedTextPromise
       .then((value) => {
-        if (!value.trim()) throw new Error("Не выделен текст");
+        if (!value.trim())
+          throw new Error(getUiStrings(language).selectionMissing);
         setText(value);
       })
       .catch((reason) => setError(String(reason)))
@@ -53,9 +57,10 @@ export default function Command() {
   useEffect(() => {
     async function loadSavedModes() {
       try {
-        const { modes, sortMode } = await loadModeSettings();
+        const { modes, sortMode, language } = await loadModeSettings();
         setModes(modes);
         setSortMode(sortMode);
+        setLanguage(language);
       } catch (reason) {
         setError(String(reason));
       } finally {
@@ -74,13 +79,12 @@ export default function Command() {
     error,
   });
   const sortedModes = sortModes(modes, sortMode);
+  const ui = getUiStrings(language);
 
   async function rewrite(mode: EditingMode) {
     if (!text || viewState !== "ready") return;
     if (text.length > MAX_TEXT_LENGTH) {
-      setError(
-        `Выделенный текст слишком длинный (${text.length} символов). Максимум: ${MAX_TEXT_LENGTH}.`,
-      );
+      setError(ui.selectedTextTooLong(text.length, MAX_TEXT_LENGTH));
       return;
     }
 
@@ -101,7 +105,7 @@ export default function Command() {
       };
       const apiKey = apiKeys[mode.provider];
       if (mode.provider !== "ollama" && !apiKey)
-        throw new Error("Настрой API-ключ в Preferences");
+        throw new Error(ui.configureApiKey);
       const options: RewriteOptions = {
         text,
         mode,
@@ -125,9 +129,7 @@ export default function Command() {
       await Clipboard.paste(result);
     } catch (reason) {
       setError(
-        controller.signal.aborted
-          ? "Обработка отменена или превысила 60 секунд."
-          : String(reason),
+        controller.signal.aborted ? ui.rewriteCancelled : String(reason),
       );
     } finally {
       clearTimeout(timeoutId);
@@ -144,17 +146,17 @@ export default function Command() {
       <List>
         <List.EmptyView
           icon={Icon.ExclamationMark}
-          title="Не удалось переписать текст"
+          title={ui.rewriteFailed}
           description={error}
           actions={
             <ActionPanel>
               <Action
-                title="Повторить"
+                title={ui.retry}
                 icon={Icon.ArrowClockwise}
                 onAction={() => setError(undefined)}
               />
               <Action
-                title="Открыть Настройки"
+                title={ui.openSettings}
                 icon={Icon.Gear}
                 onAction={openExtensionPreferences}
               />
@@ -165,15 +167,15 @@ export default function Command() {
     );
   if (viewState === "empty")
     return (
-      <List navigationTitle="Переписать выделенный текст">
+      <List navigationTitle={ui.rewriteSelectedText}>
         <List.EmptyView
           icon={Icon.Text}
-          title="Нет режимов"
-          description="Создайте режим в настройках, чтобы переписывать текст."
+          title={ui.noModes}
+          description={ui.noModesDescription}
           actions={
             <ActionPanel>
               <Action
-                title="Открыть Настройки"
+                title={ui.openSettings}
                 icon={Icon.Gear}
                 onAction={openExtensionPreferences}
               />
@@ -185,7 +187,7 @@ export default function Command() {
   return (
     <List
       isLoading={viewState === "loading" || isRewriting}
-      navigationTitle="Переписать выделенный текст"
+      navigationTitle={ui.rewriteSelectedText}
     >
       {viewState === "ready"
         ? sortedModes.map((mode) => (
@@ -198,13 +200,13 @@ export default function Command() {
                 <ActionPanel>
                   {isRewriting ? (
                     <Action
-                      title="Отменить"
+                      title={ui.cancel}
                       icon={Icon.XMarkCircle}
                       onAction={cancelRewrite}
                     />
                   ) : (
                     <Action
-                      title="Переписать"
+                      title={ui.rewrite}
                       icon={Icon.Wand}
                       onAction={() => rewrite(mode)}
                     />

@@ -13,9 +13,11 @@ test("rewrite command loads, sorts, and sends the selected full mode", async () 
     index,
     /import\s+\{[\s\S]*loadModeSettings,[\s\S]*markModeUsed,[\s\S]*sortModes,[\s\S]*type EditingMode,[\s\S]*\}\s+from\s+["']\.\/modes/,
   );
-  assert.match(index, /const\s+\{\s*modes,\s*sortMode\s*\}\s*=\s*await\s+loadModeSettings\(\)/);
+  assert.match(index, /const\s+\{\s*modes,\s*sortMode,\s*language\s*\}\s*=\s*await\s+loadModeSettings\(\)/);
   assert.match(index, /setModes\(modes\)/);
   assert.match(index, /setSortMode\(sortMode\)/);
+  assert.match(index, /setLanguage\(language\)/);
+  assert.match(index, /getUiStrings\(language\)/);
   assert.match(index, /const\s+sortedModes\s*=\s*sortModes\(modes,\s*sortMode\)/);
   assert.match(index, /sortedModes\.map\(\(mode\)/);
   assert.match(index, /onAction=\{\(\)\s*=>\s*rewrite\(mode\)\}/);
@@ -57,6 +59,9 @@ test("settings exposes manual ordering controls alongside mode management", asyn
   assert.match(settings, /icon=\{Icon\.Trash\}/);
   assert.match(settings, /confirmAlert/);
   assert.match(settings, /resetModes/);
+  assert.match(settings, /setLanguage/);
+  assert.match(settings, /Icon\.Globe/);
+  assert.match(settings, /getUiStrings/);
   assert.match(settings, /openExtensionPreferences/);
   assert.match(settings, /List\.EmptyView/);
 });
@@ -64,8 +69,8 @@ test("settings exposes manual ordering controls alongside mode management", asyn
 test("rewrite command presents an empty-mode route to Settings", async () => {
   const index = await source("../src/index.tsx");
 
-  assert.match(index, /Нет режимов/);
-  assert.match(index, /Открыть Настройки/);
+  assert.match(index, /ui\.noModes/);
+  assert.match(index, /ui\.openSettings/);
   assert.match(index, /getRewriteViewState/);
 });
 

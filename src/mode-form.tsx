@@ -13,6 +13,8 @@ import {
   type EditingMode,
   type Provider,
 } from "./modes";
+import { getUiStrings } from "./i18n";
+import type { Language } from "./language";
 
 type FormValues = {
   title: string;
@@ -26,6 +28,7 @@ type FormValues = {
 
 type ModeFormProps = {
   mode?: EditingMode;
+  language: Language;
   onSaved: () => Promise<unknown> | unknown;
 };
 
@@ -36,21 +39,25 @@ const providerOptions: Array<{ value: Provider; title: string }> = [
   { value: "ollama", title: "Ollama" },
 ];
 
-export default function ModeForm({ mode, onSaved }: ModeFormProps) {
+export default function ModeForm({ mode, language, onSaved }: ModeFormProps) {
   const { pop } = useNavigation();
+  const ui = getUiStrings(language);
 
   async function save(values: FormValues) {
     try {
-      const validated = validateEditingMode({
-        id: mode?.id ?? "new-mode",
-        title: values.title,
-        description: values.description,
-        provider: values.provider,
-        model: values.model,
-        systemPrompt: values.systemPrompt,
-        temperature: Number(values.temperature),
-        maxTokens: Number(values.maxTokens),
-      });
+      const validated = validateEditingMode(
+        {
+          id: mode?.id ?? "new-mode",
+          title: values.title,
+          description: values.description,
+          provider: values.provider,
+          model: values.model,
+          systemPrompt: values.systemPrompt,
+          temperature: Number(values.temperature),
+          maxTokens: Number(values.maxTokens),
+        },
+        language,
+      );
 
       if (mode) {
         await updateMode(validated);
@@ -70,7 +77,7 @@ export default function ModeForm({ mode, onSaved }: ModeFormProps) {
     } catch (reason) {
       await showToast({
         style: Toast.Style.Failure,
-        title: "Проверьте параметры режима",
+        title: ui.modeFormInvalid,
         message: String(reason),
       });
     }
@@ -78,22 +85,22 @@ export default function ModeForm({ mode, onSaved }: ModeFormProps) {
 
   return (
     <Form
-      navigationTitle={mode ? "Изменить режим" : "Новый режим"}
+      navigationTitle={mode ? ui.editMode : ui.newMode}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Сохранить" onSubmit={save} />
+          <Action.SubmitForm title={ui.save} onSubmit={save} />
         </ActionPanel>
       }
     >
-      <Form.TextField id="title" title="Название" defaultValue={mode?.title} />
+      <Form.TextField id="title" title={ui.title} defaultValue={mode?.title} />
       <Form.TextField
         id="description"
-        title="Описание"
+        title={ui.description}
         defaultValue={mode?.description}
       />
       <Form.Dropdown
         id="provider"
-        title="Провайдер"
+        title={ui.provider}
         defaultValue={mode?.provider ?? "ollama"}
       >
         {providerOptions.map(({ value, title }) => (
@@ -102,22 +109,22 @@ export default function ModeForm({ mode, onSaved }: ModeFormProps) {
       </Form.Dropdown>
       <Form.TextField
         id="model"
-        title="Модель"
+        title={ui.model}
         defaultValue={mode?.model ?? "qwen3:14b"}
       />
       <Form.TextArea
         id="systemPrompt"
-        title="Системная инструкция"
+        title={ui.systemPrompt}
         defaultValue={mode?.systemPrompt}
       />
       <Form.TextField
         id="temperature"
-        title="Температура"
+        title={ui.temperature}
         defaultValue={String(mode?.temperature ?? 0.2)}
       />
       <Form.TextField
         id="maxTokens"
-        title="Максимум токенов"
+        title={ui.maxTokens}
         defaultValue={String(mode?.maxTokens ?? 4096)}
       />
     </Form>
