@@ -1,4 +1,5 @@
 import type { EditingMode } from "./modes.ts";
+import { getProviderDefinition } from "./provider-registry.ts";
 import {
   buildOllamaRequest,
   extractOllamaContent,
@@ -11,11 +12,6 @@ export interface RewriteOptions {
   apiKey?: string;
   ollamaUrl?: string;
 }
-
-const PROVIDER_URLS = {
-  openai: "https://api.openai.com/v1",
-  groq: "https://api.groq.com/openai/v1",
-} as const;
 
 export async function rewriteText(
   options: RewriteOptions,
@@ -33,32 +29,19 @@ async function callProvider(
   options: RewriteOptions,
   signal?: AbortSignal,
 ): Promise<string> {
-  const { mode } = options;
-  let result: string;
-
-  switch (mode.provider) {
-    case "openai":
-    case "groq":
-      result = await callOpenAICompatible(
-        PROVIDER_URLS[mode.provider],
-        options,
-        signal,
-      );
-      break;
-
-    case "anthropic":
-      result = await callAnthropic(options, signal);
-      break;
-
-    case "ollama":
-      result = await callOllama(options, signal);
-      break;
-
-    default:
-      throw new Error(`Unknown provider: ${mode.provider}`);
+  const provider = getProviderDefinition(options.mode.provider);
+  if (!provider) {
+    throw new Error(`Unknown provider: ${options.mode.provider}`);
   }
 
-  return result;
+  switch (provider.adapter) {
+    case "openai-compatible":
+      return callOpenAICompatible(provider.defaultBaseUrl, options, signal);
+    case "anthropic":
+      return callAnthropic(provider.defaultBaseUrl, options, signal);
+    case "ollama":
+      return callOllama(provider.defaultBaseUrl, options, signal);
+  }
 }
 
 export function validateRewriteResult(
@@ -84,13 +67,11 @@ export async function retryEchoedSystemPrompt(
 }
 
 async function callOllama(
+  defaultBaseUrl: string,
   options: RewriteOptions,
   signal?: AbortSignal,
 ): Promise<string> {
-  const baseUrl = (options.ollamaUrl || "http://127.0.0.1:11434").replace(
-    /\/$/,
-    "",
-  );
+  const baseUrl = (options.ollamaUrl || defaultBaseUrl).replace(/\/$/, "");
   const response = await fetch(`${baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -168,12 +149,13 @@ export function buildAnthropicRequest(text: string, mode: EditingMode) {
 }
 
 async function callAnthropic(
+  baseUrl: string,
   options: RewriteOptions,
   signal?: AbortSignal,
 ): Promise<string> {
   const { text, apiKey, mode } = options;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch(`${baseUrl}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

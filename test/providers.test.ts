@@ -6,6 +6,7 @@ import { buildOllamaRequest, extractOllamaContent } from "../src/ollama.ts";
 import {
   buildAnthropicRequest,
   buildOpenAICompatibleRequest,
+  rewriteText,
   retryEchoedSystemPrompt,
   validateRewriteResult,
 } from "../src/providers.ts";
@@ -832,6 +833,120 @@ test("Ollama payload uses every mode parameter and separates messages", () => {
       { role: "user", content: "Ollama input." },
     ],
   });
+});
+
+test("provider dispatch consumes registry adapter metadata", async () => {
+  const providersSource = await readFile(
+    new URL("../src/providers.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(providersSource, /getProviderDefinition/);
+  assert.match(providersSource, /switch \(provider\.adapter\)/);
+  assert.doesNotMatch(providersSource, /PROVIDER_URLS/);
+  assert.doesNotMatch(providersSource, /switch \(mode\.provider\)/);
+});
+
+function mockJsonFetch(
+  responseBody: unknown,
+  requests: Array<{ url: string; init?: RequestInit }>,
+): typeof fetch {
+  return async (input, init) => {
+    requests.push({ url: String(input), init });
+    return new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+}
+
+test("rewriteText dispatches OpenAI-compatible providers through registry URLs", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = mockJsonFetch(
+    { choices: [{ message: { content: "Rewritten" } }] },
+    requests,
+  );
+
+  for (const [provider, expectedUrl] of [
+    ["openai", "https://api.openai.com/v1/chat/completions"],
+    ["groq", "https://api.groq.com/openai/v1/chat/completions"],
+  ] as const) {
+    assert.equal(
+      await rewriteText({
+        text: "Input",
+        mode: { ...validMode, provider },
+        apiKey: "secret",
+      }),
+      "Rewritten",
+    );
+    assert.equal(requests.at(-1)?.url, expectedUrl);
+    assert.equal(
+      new Headers(requests.at(-1)?.init?.headers).get("Authorization"),
+      "Bearer secret",
+    );
+  }
+});
+
+test("rewriteText keeps Anthropic on its native adapter", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = mockJsonFetch(
+    { content: [{ type: "text", text: "Rewritten" }] },
+    requests,
+  );
+
+  assert.equal(
+    await rewriteText({
+      text: "Input",
+      mode: { ...validMode, provider: "anthropic" },
+      apiKey: "secret",
+    }),
+    "Rewritten",
+  );
+  assert.equal(requests[0]?.url, "https://api.anthropic.com/v1/messages");
+  assert.equal(
+    new Headers(requests[0]?.init?.headers).get("x-api-key"),
+    "secret",
+  );
+});
+
+test("rewriteText keeps Ollama on its adapter and allows a URL override", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = mockJsonFetch(
+    { message: { content: "Rewritten" } },
+    requests,
+  );
+
+  assert.equal(
+    await rewriteText({
+      text: "Input",
+      mode: validMode,
+      ollamaUrl: "http://localhost:11434/",
+    }),
+    "Rewritten",
+  );
+  assert.equal(requests[0]?.url, "http://localhost:11434/api/chat");
+});
+
+test("rewriteText reports an unknown provider clearly", async () => {
+  await assert.rejects(
+    rewriteText({
+      text: "Input",
+      mode: { ...validMode, provider: "custom" as "ollama" },
+    }),
+    /Unknown provider: custom/,
+  );
 });
 
 test("validateRewriteResult rejects an echoed system prompt", () => {
