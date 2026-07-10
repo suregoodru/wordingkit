@@ -2,8 +2,8 @@ import { LocalStorage } from "@raycast/api";
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from "./language.ts";
 import { getUiStrings } from "./i18n.ts";
 import { getLanguagePreset } from "./tones.ts";
-
-export type Provider = "openai" | "anthropic" | "groq" | "ollama";
+import { isProvider, type Provider } from "./provider-registry.ts";
+export type { Provider } from "./provider-registry.ts";
 
 export type EditingMode = {
   id: string;
@@ -30,12 +30,6 @@ export type ModeSettings = {
 
 const DEFAULT_TEMPERATURE = 0.2;
 const DEFAULT_MAX_TOKENS = 4096;
-const PROVIDERS: ReadonlySet<Provider> = new Set<Provider>([
-  "openai",
-  "anthropic",
-  "groq",
-  "ollama",
-]);
 const DAMAGED_STORAGE_MESSAGE = getUiStrings(DEFAULT_LANGUAGE).damagedStorage;
 
 type StoredModeDocument = ModeSettings & {
@@ -81,10 +75,6 @@ export function createDefaultModes(
 
 function isEditingModeRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isProvider(value: unknown): value is Provider {
-  return typeof value === "string" && PROVIDERS.has(value as Provider);
 }
 
 function isSortMode(value: unknown): value is SortMode {
