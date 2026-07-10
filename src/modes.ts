@@ -1,5 +1,7 @@
 import { LocalStorage } from "@raycast/api";
-import { RUSSIAN_STYLES, TONE_PROMPTS } from "./tones.ts";
+import { DEFAULT_LANGUAGE, isLanguage, type Language } from "./language.ts";
+import { getUiStrings } from "./i18n.ts";
+import { getLanguagePreset } from "./tones.ts";
 
 export type Provider = "openai" | "anthropic" | "groq" | "ollama";
 
@@ -16,17 +18,16 @@ export type EditingMode = {
 };
 
 export const MODE_STORAGE_KEY = "editing-modes";
-export const MODE_STORAGE_VERSION = 2;
+export const MODE_STORAGE_VERSION = 3;
 
 export type SortMode = "custom" | "last-used";
 export type MoveDirection = "up" | "down";
 export type ModeSettings = {
+  language: Language;
   sortMode: SortMode;
   modes: EditingMode[];
 };
 
-const DEFAULT_PROVIDER: Provider = "ollama";
-const DEFAULT_MODEL = "qwen3:14b";
 const DEFAULT_TEMPERATURE = 0.2;
 const DEFAULT_MAX_TOKENS = 4096;
 const PROVIDERS: ReadonlySet<Provider> = new Set<Provider>([
@@ -35,15 +36,15 @@ const PROVIDERS: ReadonlySet<Provider> = new Set<Provider>([
   "groq",
   "ollama",
 ]);
-const DAMAGED_STORAGE_MESSAGE =
-  "Сохранённые режимы повреждены. Измените их в настройках.";
+const DAMAGED_STORAGE_MESSAGE = getUiStrings(DEFAULT_LANGUAGE).damagedStorage;
 
 type StoredModeDocument = ModeSettings & {
   version: typeof MODE_STORAGE_VERSION;
 };
 
 type LegacyStoredModeDocument = {
-  version: 1;
+  version: 1 | 2;
+  sortMode?: SortMode;
   modes: EditingMode[];
 };
 
@@ -62,14 +63,17 @@ function generateModeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function createDefaultModes(): EditingMode[] {
-  return RUSSIAN_STYLES.map(({ id, title, subtitle }) => ({
+export function createDefaultModes(
+  language: Language = DEFAULT_LANGUAGE,
+): EditingMode[] {
+  const preset = getLanguagePreset(language);
+  return preset.styles.map(({ id, title, subtitle }) => ({
     id: generateModeId(),
     title,
     description: subtitle,
-    provider: DEFAULT_PROVIDER,
-    model: DEFAULT_MODEL,
-    systemPrompt: TONE_PROMPTS[id],
+    provider: preset.defaultProvider,
+    model: preset.defaultModel,
+    systemPrompt: preset.prompts[id]!,
     temperature: DEFAULT_TEMPERATURE,
     maxTokens: DEFAULT_MAX_TOKENS,
   }));
@@ -94,9 +98,13 @@ function isIsoTimestamp(value: string): boolean {
   );
 }
 
-export function validateEditingMode(value: unknown): EditingMode {
+export function validateEditingMode(
+  value: unknown,
+  language: Language = DEFAULT_LANGUAGE,
+): EditingMode {
+  const ui = getUiStrings(language);
   if (!isEditingModeRecord(value)) {
-    throw new Error("Данные режима должны быть объектом.");
+    throw new Error(ui.invalidModeField("data"));
   }
 
   const {
@@ -112,22 +120,22 @@ export function validateEditingMode(value: unknown): EditingMode {
   } = value;
 
   if (typeof id !== "string" || !id.trim()) {
-    throw new Error("Укажите идентификатор режима.");
+    throw new Error(ui.invalidModeField("identifier"));
   }
   if (typeof title !== "string" || !title.trim()) {
-    throw new Error("Укажите название режима.");
+    throw new Error(ui.invalidModeField(ui.title));
   }
   if (description !== undefined && typeof description !== "string") {
-    throw new Error("Описание режима должно быть текстом.");
+    throw new Error(ui.invalidModeField(ui.description));
   }
   if (typeof model !== "string" || !model.trim()) {
-    throw new Error("Укажите модель.");
+    throw new Error(ui.invalidModeField(ui.model));
   }
   if (typeof systemPrompt !== "string" || !systemPrompt.trim()) {
-    throw new Error("Укажите инструкцию для режима.");
+    throw new Error(ui.invalidModeField(ui.systemPrompt));
   }
   if (!isProvider(provider)) {
-    throw new Error("Выберите поддерживаемого провайдера.");
+    throw new Error(ui.invalidModeField(ui.provider));
   }
   if (
     typeof temperature !== "number" ||
@@ -135,20 +143,20 @@ export function validateEditingMode(value: unknown): EditingMode {
     temperature < 0 ||
     temperature > 2
   ) {
-    throw new Error("Температура должна быть числом от 0 до 2.");
+    throw new Error(ui.invalidModeField(ui.temperature));
   }
   if (
     typeof maxTokens !== "number" ||
     !Number.isInteger(maxTokens) ||
     maxTokens <= 0
   ) {
-    throw new Error("Лимит токенов должен быть положительным целым числом.");
+    throw new Error(ui.invalidModeField(ui.maxTokens));
   }
   if (
     lastUsedAt !== undefined &&
     (typeof lastUsedAt !== "string" || !isIsoTimestamp(lastUsedAt))
   ) {
-    throw new Error("Дата последнего использования должна быть ISO-датой.");
+    throw new Error(ui.invalidModeField("last used date"));
   }
 
   return {
@@ -173,6 +181,7 @@ function validateStoredModeDocument(value: unknown): StoredModeDocument {
     if (
       !isEditingModeRecord(value) ||
       value.version !== MODE_STORAGE_VERSION ||
+      !isLanguage(value.language) ||
       !isSortMode(value.sortMode)
     ) {
       throw damagedStorageError();
@@ -183,8 +192,11 @@ function validateStoredModeDocument(value: unknown): StoredModeDocument {
 
     return {
       version: MODE_STORAGE_VERSION,
+      language: value.language,
       sortMode: value.sortMode,
-      modes: value.modes.map(validateEditingMode),
+      modes: value.modes.map((mode) =>
+        validateEditingMode(mode, value.language),
+      ),
     };
   } catch {
     throw damagedStorageError();
@@ -197,14 +209,17 @@ function validateLegacyStoredModeDocument(
   try {
     if (
       !isEditingModeRecord(value) ||
-      value.version !== 1 ||
+      (value.version !== 1 && value.version !== 2) ||
       !Array.isArray(value.modes)
     ) {
       throw damagedStorageError();
     }
 
     return {
-      version: 1,
+      version: value.version,
+      ...(value.version === 2 && isSortMode(value.sortMode)
+        ? { sortMode: value.sortMode }
+        : {}),
       modes: value.modes.map(validateEditingMode),
     };
   } catch {
@@ -214,7 +229,7 @@ function validateLegacyStoredModeDocument(
 
 function validateSortMode(value: unknown): SortMode {
   if (!isSortMode(value)) {
-    throw new Error("Выберите поддерживаемый порядок сортировки.");
+    throw new Error(getUiStrings(DEFAULT_LANGUAGE).unsupportedSort);
   }
   return value;
 }
@@ -227,15 +242,20 @@ async function persistModeSettings(
     ...settings,
   });
   await LocalStorage.setItem(MODE_STORAGE_KEY, JSON.stringify(document));
-  return { sortMode: document.sortMode, modes: document.modes };
+  return {
+    language: document.language,
+    sortMode: document.sortMode,
+    modes: document.modes,
+  };
 }
 
 async function loadModeSettingsUnlocked(): Promise<ModeSettings> {
   const stored = await LocalStorage.getItem(MODE_STORAGE_KEY);
   if (stored === null || stored === undefined) {
     return persistModeSettings({
+      language: DEFAULT_LANGUAGE,
       sortMode: "custom",
-      modes: createDefaultModes(),
+      modes: createDefaultModes(DEFAULT_LANGUAGE),
     });
   }
 
@@ -245,15 +265,23 @@ async function loadModeSettingsUnlocked(): Promise<ModeSettings> {
 
   try {
     const parsed = JSON.parse(stored);
-    if (isEditingModeRecord(parsed) && parsed.version === 1) {
+    if (
+      isEditingModeRecord(parsed) &&
+      (parsed.version === 1 || parsed.version === 2)
+    ) {
       const legacyDocument = validateLegacyStoredModeDocument(parsed);
       return persistModeSettings({
-        sortMode: "custom",
+        language: DEFAULT_LANGUAGE,
+        sortMode: legacyDocument.sortMode ?? "custom",
         modes: legacyDocument.modes,
       });
     }
     const document = validateStoredModeDocument(parsed);
-    return { sortMode: document.sortMode, modes: document.modes };
+    return {
+      language: document.language,
+      sortMode: document.sortMode,
+      modes: document.modes,
+    };
   } catch {
     throw damagedStorageError();
   }
@@ -269,11 +297,25 @@ export async function loadModes(): Promise<EditingMode[]> {
 
 export async function resetModes(): Promise<EditingMode[]> {
   return queueMutation(async () => {
+    let language = DEFAULT_LANGUAGE;
+    try {
+      language = (await loadModeSettingsUnlocked()).language;
+    } catch {
+      // Reset is the explicit recovery path for damaged storage.
+    }
     const settings = await persistModeSettings({
+      language,
       sortMode: "custom",
-      modes: createDefaultModes(),
+      modes: createDefaultModes(language),
     });
     return settings.modes;
+  });
+}
+
+export async function setLanguage(language: Language): Promise<ModeSettings> {
+  return queueMutation(async () => {
+    const settings = await loadModeSettingsUnlocked();
+    return persistModeSettings({ ...settings, language });
   });
 }
 
@@ -297,7 +339,7 @@ export async function updateMode(mode: EditingMode): Promise<EditingMode> {
     const settings = await loadModeSettingsUnlocked();
     const index = settings.modes.findIndex(({ id }) => id === validated.id);
     if (index === -1) {
-      throw new Error("Режим не найден.");
+      throw new Error(getUiStrings(settings.language).modeNotFound);
     }
     const updated = validateEditingMode({
       ...validated,
@@ -344,7 +386,7 @@ export async function moveMode(
     const settings = await loadModeSettingsUnlocked();
     const index = settings.modes.findIndex((mode) => mode.id === id);
     if (index === -1) {
-      throw new Error("Режим не найден.");
+      throw new Error(getUiStrings(settings.language).modeNotFound);
     }
 
     const targetIndex = direction === "up" ? index - 1 : index + 1;
@@ -367,7 +409,7 @@ export async function markModeUsed(
     const settings = await loadModeSettingsUnlocked();
     const index = settings.modes.findIndex((mode) => mode.id === id);
     if (index === -1) {
-      throw new Error("Режим не найден.");
+      throw new Error(getUiStrings(settings.language).modeNotFound);
     }
 
     const updated = validateEditingMode({
