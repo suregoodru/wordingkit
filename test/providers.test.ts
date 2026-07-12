@@ -10,7 +10,7 @@ import {
   retryEchoedSystemPrompt,
   validateRewriteResult,
 } from "../src/providers.ts";
-import { TONE_PROMPTS } from "../src/tones.ts";
+import { LANGUAGE_PRESETS, TONE_PROMPTS } from "../src/tones.ts";
 
 const storage = new Map<string, unknown>();
 const writes: Array<{ key: string; value: unknown }> = [];
@@ -1000,7 +1000,30 @@ test("Russian style prompts preserve the source text and differentiate editing g
   assert.match(TONE_PROMPTS.formal, /не добавляй обращение или подпись/);
   assert.match(TONE_PROMPTS.natural, /по-человечески/i);
   assert.match(TONE_PROMPTS.emoji, /эмодзи/i);
-  assert.match(TONE_PROMPTS.emoji, /не больше 4/i);
+  assert.match(TONE_PROMPTS.emoji, /от 1 до 7/i);
+  assert.match(TONE_PROMPTS.emoji, /сначала ищи.*внутри предложения/i);
+  assert.match(TONE_PROMPTS.emoji, /конец предложения.*не.*позици/i);
+  assert.match(TONE_PROMPTS.emoji, /на весь текст/i);
+  assert.match(TONE_PROMPTS.emoji, /не ставь.*после каждого предложения/i);
+  assert.match(TONE_PROMPTS.emoji, /Не делай так:.*Ориентир по расположению:/i);
+  assert.match(
+    LANGUAGE_PRESETS.en.prompts.emoji,
+    /between one and seven emoji/i,
+  );
+  assert.match(
+    LANGUAGE_PRESETS.en.prompts.emoji,
+    /first look for.*inside the sentence/i,
+  );
+  assert.match(
+    LANGUAGE_PRESETS.en.prompts.emoji,
+    /sentence ending.*not.*default position/i,
+  );
+  assert.match(LANGUAGE_PRESETS.en.prompts.emoji, /whole text/i);
+  assert.match(LANGUAGE_PRESETS.en.prompts.emoji, /after every sentence/i);
+  assert.match(
+    LANGUAGE_PRESETS.en.prompts.emoji,
+    /Do not do this:.*Placement guide:/i,
+  );
   assert.match(TONE_PROMPTS.social, /соцсет/i);
   assert.match(TONE_PROMPTS.selling, /оффер/i);
   assert.match(TONE_PROMPTS["work-chat"], /рабочей переписки/i);

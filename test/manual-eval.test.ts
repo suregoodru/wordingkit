@@ -14,6 +14,7 @@ import {
   buildManualEvalModes,
   validateManualModels,
 } from "../scripts/generate-manual-eval-modes.ts";
+import { LANGUAGE_PRESETS } from "../src/tones.ts";
 
 test("manual eval validates editable messages and modes", () => {
   assert.deepEqual(validateManualMessages([" Привет ", "Нужно поправить"]), [
@@ -132,6 +133,25 @@ test("manual eval generates modes from editable Ollama model list", () => {
     modes.every(({ temperature, maxTokens }) => {
       return temperature === 0.2 && maxTokens === 4096;
     }),
+  );
+});
+
+test("manual eval generation uses the inline emoji preset prompt", () => {
+  const preset = LANGUAGE_PRESETS.ru;
+  const modes = buildManualEvalModes(
+    preset.styles,
+    preset.prompts,
+    ["qwen3:14b"],
+  );
+  const emojiMode = modes.find(({ id }) => id === "emoji__qwen3-14b");
+
+  assert.ok(emojiMode);
+  assert.match(emojiMode.systemPrompt, /сначала ищи.*внутри предложения/i);
+  assert.match(emojiMode.systemPrompt, /конец предложения.*не.*позици/i);
+  assert.match(emojiMode.systemPrompt, /на весь текст/i);
+  assert.match(
+    emojiMode.systemPrompt,
+    /Не делай так:.*Ориентир по расположению:/i,
   );
 });
 
