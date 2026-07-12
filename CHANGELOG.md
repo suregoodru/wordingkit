@@ -1,16 +1,11 @@
 # WordingKit Changelog
 
-## Unreleased
+## [Initial Release] - {PR_MERGE_DATE}
 
 ### Added
 
 - Open-source project documentation, license, contribution guide, security
   policy, issue templates, pull request template, and GitHub Actions CI.
-
-## Initial Release
-
-### Added
-
 - Rewrite selected text from any macOS app using AI
 - Support for Ollama, OpenAI, Anthropic, and Groq providers
 - Built-in Russian editing modes for grammar fixes, rewriting, clarity,

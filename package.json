@@ -29,6 +29,9 @@
     "anthropic",
     "groq"
   ],
+  "platforms": [
+    "macOS"
+  ],
   "license": "MIT",
   "commands": [
     {
@@ -78,7 +81,7 @@
     }
   ],
   "dependencies": {
-    "@raycast/api": "^1.104.21"
+    "@raycast/api": "^1.104.22"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^1.0.11",
